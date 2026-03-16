@@ -1,9 +1,9 @@
-Route::get('/orders/{order_id}/tracking', [\App\Http\Controllers\Api\OrderTrackingController::class, 'show']);
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Models\Order;
+use App\Http\Controllers\Api\OrderTrackingController;
+use App\Http\Controllers\Api\StripeWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,3 +46,7 @@ Route::get('/orders/{order_code}', function ($order_code) {
         ]
     ]);
 });
+
+Route::get('/orders/{order_id}/tracking', [OrderTrackingController::class, 'show']);
+
+Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->name('api.stripe.webhook');

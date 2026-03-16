@@ -7,7 +7,7 @@
 @endpush
 
 @push('scripts')
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAESWAccCjxPg0NHszTHGM5K3f29vNMW6o"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.js_api_key') }}"></script>
     <script>
         let map, marker;
         function updateRiderMap(orderId) {
@@ -231,15 +231,27 @@
                             <label class="form-label fw-bold">
                                 <i class="fas fa-wallet me-2 text-primary"></i>Payment Method
                             </label>
-                            <div class="bg-light rounded-3 p-3 d-flex align-items-center">
-                                <div class="bg-success rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
-                                    <i class="fas fa-money-bill-wave text-white"></i>
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <input type="radio" class="btn-check" name="payment_method" id="payment-cash" value="cash" {{ old('payment_method', 'cash') === 'cash' ? 'checked' : '' }}>
+                                    <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="payment-cash">
+                                        <i class="fas fa-money-bill-wave fa-2x mb-2 d-block"></i>
+                                        <span class="fw-bold">Cash</span>
+                                        <small class="d-block text-muted">Pay on delivery</small>
+                                    </label>
                                 </div>
-                                <div>
-                                    <span class="fw-bold">Cash on Delivery</span>
-                                    <small class="d-block text-muted">Pay when you receive your order</small>
+                                <div class="col-6">
+                                    <input type="radio" class="btn-check" name="payment_method" id="payment-card" value="card" {{ old('payment_method') === 'card' ? 'checked' : '' }}>
+                                    <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="payment-card">
+                                        <i class="fas fa-credit-card fa-2x mb-2 d-block"></i>
+                                        <span class="fw-bold">Card</span>
+                                        <small class="d-block text-muted">Stripe checkout</small>
+                                    </label>
                                 </div>
                             </div>
+                            @error('payment_method')
+                                <div class="text-danger small mt-2">{{ $message }}</div>
+                            @enderror
                         </div>
 
                         <hr class="my-4">

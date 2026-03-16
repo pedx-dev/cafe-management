@@ -48,6 +48,21 @@ class LoginController extends Controller
      */
     protected function authenticated($request, $user)
     {
+        // If email is not verified, redirect to verification page
+        if (! $user->email_verified_at) {
+            // Resend code if none exists or it has expired
+            if (
+                ! $user->verification_code ||
+                ! $user->verification_code_expires_at ||
+                \Carbon\Carbon::now()->greaterThan($user->verification_code_expires_at)
+            ) {
+                \App\Http\Controllers\Auth\VerificationCodeController::generateAndSendCode($user);
+            }
+
+            return redirect()->route('verification.code.show')
+                ->with('account_success', 'Please verify your email to continue.');
+        }
+
         // Redirect admin to dashboard, regular user to menu
         if ($user->isAdmin()) {
             return redirect()->route('admin.dashboard')

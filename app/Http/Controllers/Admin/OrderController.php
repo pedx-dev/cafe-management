@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Services\TwilioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -52,7 +54,42 @@ class OrderController extends Controller
         $order = Order::findOrFail($id);
         $order->update(['status' => $validated['status']]);
 
+        try {
+            app(TwilioService::class)->sendOrderStatus($order->user, $order, ucfirst($validated['status']));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send admin status SMS', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         return redirect()->back()->with('success', 'Order status updated successfully.');
+    }
+
+    /**
+     * Update rider tracking location and ETA.
+     */
+    public function updateTracking(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'lat' => 'required|numeric|between:-90,90',
+            'lng' => 'required|numeric|between:-180,180',
+            'eta' => 'nullable|string|max:100',
+        ]);
+
+        $order = Order::findOrFail($id);
+
+        $order->orderTracking()->updateOrCreate(
+            ['order_id' => $order->id],
+            [
+                'status'  => $order->status,
+                'lat'     => $validated['lat'],
+                'lng'     => $validated['lng'],
+                'eta'     => $validated['eta'] ?? null,
+            ]
+        );
+
+        return redirect()->back()->with('success', 'Rider location updated successfully.');
     }
 
     /**

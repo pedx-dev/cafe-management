@@ -59,6 +59,13 @@
         </div>
     @endif
 
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert" data-aos="fade-in">
+            <i class="fas fa-exclamation-circle me-2"></i>{{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    @endif
+
     <!-- Order Progress Timeline -->
     @if($order->status != 'cancelled')
     <div class="card-cafe mb-4" data-aos="fade-up">
@@ -164,6 +171,20 @@
                     <h5 class="fw-bold mb-3">
                         <i class="fas fa-map-marker-alt me-2 text-primary"></i>Delivery Details
                     </h5>
+
+                    @if($order->payment_method === 'card' && $order->payment_status !== 'paid' && $order->status !== 'cancelled')
+                    <div class="alert alert-warning d-flex align-items-center" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <div class="small">Card payment is still pending.</div>
+                    </div>
+                    <form action="{{ route('orders.payment.retry', $order->id) }}" method="POST" class="mb-3">
+                        @csrf
+                        <button type="submit" class="btn btn-warning w-100 rounded-pill">
+                            <i class="fas fa-credit-card me-2"></i>Retry Card Payment
+                        </button>
+                    </form>
+                    @endif
+
                     <div class="bg-light rounded-3 p-3 mb-3">
                         <small class="text-muted d-block mb-1">Delivery Address</small>
                         <p class="mb-0 fw-semibold">{{ $order->delivery_address ?? 'Pickup at Store' }}</p>
@@ -197,6 +218,12 @@
         </div>
     </div>
 
+    @php
+        $mapsKey = config('services.google_maps.js_api_key');
+        $isDeliveryOrder = $order->delivery_type === 'delivery';
+    @endphp
+
+    @if($isDeliveryOrder)
     <!-- Rider Map Section -->
     <div class="row mb-5" id="rider-map-section">
         <div class="col-12">
@@ -207,27 +234,46 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div id="map" style="width:100%;height:300px;border-radius:12px;"></div>
-                    <div id="rider-status" class="mt-3"></div>
+                    @if(!$mapsKey)
+                        <div class="alert alert-warning mb-0">
+                            Google Maps API key is not configured yet. Add <code>GOOGLE_MAPS_JS_API_KEY</code> in your <code>.env</code>.
+                        </div>
+                    @else
+                        <div id="map" style="width:100%;height:300px;border-radius:12px;display:none;"></div>
+                        <div id="rider-status" class="mt-3 text-muted">Waiting for rider location...</div>
+                    @endif
                 </div>
             </div>
         </div>
         <input type="hidden" id="order-id" value="{{ $order->id }}">
     </div>
+    @endif
 
+    @if($isDeliveryOrder && $mapsKey)
     @push('scripts')
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ $mapsKey }}"></script>
     <script>
         let map, marker;
         function updateRiderMap(orderId) {
             fetch(`/api/orders/${orderId}/tracking`)
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error('Tracking API unavailable');
+                    }
+                    return res.json();
+                })
                 .then(data => {
+                    const statusEl = document.getElementById('rider-status');
+                    const mapEl = document.getElementById('map');
+
                     if (data.location && data.location.lat && data.location.lng) {
                         const lat = parseFloat(data.location.lat);
                         const lng = parseFloat(data.location.lng);
+
+                        mapEl.style.display = 'block';
+
                         if (!map) {
-                            map = new google.maps.Map(document.getElementById('map'), {
+                            map = new google.maps.Map(mapEl, {
                                 center: {lat, lng},
                                 zoom: 15
                             });
@@ -241,12 +287,25 @@
                             marker.setPosition({lat, lng});
                             map.setCenter({lat, lng});
                         }
-                        document.getElementById('rider-status').innerHTML = `<b>Status:</b> ${data.status} <br><b>ETA:</b> ${data.eta || 'N/A'}`;
+
+                        statusEl.innerHTML = `<b>Status:</b> ${data.status || 'N/A'} <br><b>ETA:</b> ${data.eta || 'N/A'}`;
+                    } else {
+                        mapEl.style.display = 'none';
+                        statusEl.textContent = 'Tracking is active, but rider location is not available yet.';
+                    }
+                })
+                .catch(() => {
+                    const statusEl = document.getElementById('rider-status');
+                    if (statusEl) {
+                        statusEl.textContent = 'Unable to load tracking right now. Please refresh and try again.';
                     }
                 });
         }
+
         document.addEventListener('DOMContentLoaded', function() {
-            var orderId = document.getElementById('order-id') ? document.getElementById('order-id').value : null;
+            const orderInput = document.getElementById('order-id');
+            const orderId = orderInput ? orderInput.value : null;
+
             if (orderId) {
                 updateRiderMap(orderId);
                 setInterval(() => updateRiderMap(orderId), 5000);
@@ -254,6 +313,7 @@
         });
     </script>
     @endpush
+    @endif
 </div>
 
 <style>

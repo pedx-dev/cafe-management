@@ -133,6 +133,53 @@
                 </div>
             </div>
 
+            @if($order->delivery_type === 'delivery')
+            <!-- Rider Tracking Card -->
+            <div class="card-cafe mb-4 overflow-hidden">
+                <div class="card-header bg-light py-3">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-motorcycle me-2 text-primary"></i>Update Rider Location</h5>
+                </div>
+                <div class="card-body p-4">
+                    @php $tracking = $order->orderTracking; @endphp
+                    <form action="{{ route('admin.orders.updateTracking', $order->id) }}" method="POST">
+                        @csrf
+                        @method('PUT')
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted">Click map to pin rider location, or type manually</label>
+                            @if(config('services.google_maps.js_api_key'))
+                            <div id="admin-map" style="width:100%;height:220px;border-radius:10px;border:1px solid #dee2e6;cursor:crosshair;" class="mb-2"></div>
+                            @endif
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Latitude</label>
+                                <input type="number" step="any" name="lat" id="input-lat"
+                                    class="form-control rounded-3"
+                                    value="{{ $tracking->lat ?? '' }}"
+                                    placeholder="e.g. 14.5995" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Longitude</label>
+                                <input type="number" step="any" name="lng" id="input-lng"
+                                    class="form-control rounded-3"
+                                    value="{{ $tracking->lng ?? '' }}"
+                                    placeholder="e.g. 120.9842" required>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">ETA <span class="text-muted fw-normal">(optional)</span></label>
+                            <input type="text" name="eta" class="form-control rounded-3"
+                                value="{{ $tracking->eta ?? '' }}"
+                                placeholder="e.g. 15 mins">
+                        </div>
+                        <button type="submit" class="btn btn-cafe w-100 rounded-pill">
+                            <i class="fas fa-map-marker-alt me-2"></i>Save Rider Location
+                        </button>
+                    </form>
+                </div>
+            </div>
+            @endif
+
             <!-- Customer Info Card -->
             <div class="card-cafe overflow-hidden">
                 <div class="card-header bg-gradient-primary text-white py-3">
@@ -270,11 +317,14 @@
 <style>
 .progress-timeline {
     position: relative;
+    padding: 0 1rem;
+    gap: 0.25rem;
 }
 
 .timeline-step {
     flex: 0 0 auto;
     z-index: 2;
+    min-width: 64px;
 }
 
 .step-icon-wrapper {
@@ -307,7 +357,7 @@
     flex: 1;
     height: 4px;
     background: #dee2e6;
-    margin: 27px 10px 0;
+    margin: 27px 8px 0;
     transition: background 0.3s ease;
 }
 
@@ -317,6 +367,12 @@
 
 .step-label {
     font-size: 0.85rem;
+}
+
+.card-header h5 i,
+.detail-item label i,
+.notes-section label i {
+    margin-right: 0.6rem !important;
 }
 
 .order-item-row {
@@ -332,9 +388,74 @@
         display: none !important;
     }
 }
+
+@media (max-width: 991.98px) {
+    .progress-timeline {
+        padding: 0 0.5rem;
+    }
+
+    .timeline-step {
+        min-width: 56px;
+    }
+
+    .step-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 1rem;
+    }
+
+    .timeline-connector {
+        margin-top: 23px;
+    }
+
+    .step-label {
+        font-size: 0.75rem;
+    }
+}
 </style>
 
 @push('scripts')
+@if($order->delivery_type === 'delivery' && config('services.google_maps.js_api_key'))
+<script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.js_api_key') }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const existingLat = parseFloat('{{ $order->orderTracking->lat ?? 14.5995 }}');
+        const existingLng = parseFloat('{{ $order->orderTracking->lng ?? 120.9842 }}');
+        const hasExisting = {{ $order->orderTracking && $order->orderTracking->lat ? 'true' : 'false' }};
+
+        const adminMap = new google.maps.Map(document.getElementById('admin-map'), {
+            center: { lat: existingLat, lng: existingLng },
+            zoom: hasExisting ? 15 : 12,
+        });
+
+        let adminMarker = hasExisting ? new google.maps.Marker({
+            position: { lat: existingLat, lng: existingLng },
+            map: adminMap,
+            title: 'Rider',
+            icon: 'https://maps.google.com/mapfiles/ms/icons/motorcycling.png'
+        }) : null;
+
+        adminMap.addListener('click', function (e) {
+            const lat = e.latLng.lat();
+            const lng = e.latLng.lng();
+
+            document.getElementById('input-lat').value = lat.toFixed(7);
+            document.getElementById('input-lng').value = lng.toFixed(7);
+
+            if (adminMarker) {
+                adminMarker.setPosition({ lat, lng });
+            } else {
+                adminMarker = new google.maps.Marker({
+                    position: { lat, lng },
+                    map: adminMap,
+                    title: 'Rider',
+                    icon: 'https://maps.google.com/mapfiles/ms/icons/motorcycling.png'
+                });
+            }
+        });
+    });
+</script>
+@endif
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     // Delete confirmation with SweetAlert2

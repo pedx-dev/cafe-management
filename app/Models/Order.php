@@ -18,6 +18,9 @@ class Order extends Model
         'delivery_type',
         'delivery_address',
         'payment_method',
+        'payment_status',
+        'stripe_session_id',
+        'stripe_payment_intent_id',
         'notes'
     ];
 

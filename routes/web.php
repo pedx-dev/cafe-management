@@ -70,6 +70,9 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/', [OrderController::class, 'index'])->name('orders.index');
         Route::get('/checkout', [OrderController::class, 'checkout'])->name('checkout');
         Route::post('/place', [OrderController::class, 'placeOrder'])->name('orders.place');
+        Route::get('/{id}/payment/success', [OrderController::class, 'paymentSuccess'])->name('orders.payment.success');
+        Route::get('/{id}/payment/cancel', [OrderController::class, 'paymentCancel'])->name('orders.payment.cancel');
+        Route::post('/{id}/payment/retry', [OrderController::class, 'retryCardPayment'])->name('orders.payment.retry');
         Route::get('/{id}', [OrderController::class, 'show'])->name('orders.show');
     });
 });
@@ -95,6 +98,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::get('/', [AdminOrderController::class, 'index'])->name('index');
         Route::get('/{id}', [AdminOrderController::class, 'show'])->name('show');
         Route::put('/{id}/status', [AdminOrderController::class, 'updateStatus'])->name('updateStatus');
+        Route::put('/{id}/tracking', [AdminOrderController::class, 'updateTracking'])->name('updateTracking');
         Route::delete('/{id}', [AdminOrderController::class, 'destroy'])->name('destroy');
     });
 });
