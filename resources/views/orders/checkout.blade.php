@@ -3,13 +3,16 @@
 @section('title', 'Checkout - Café Delight')
 
 @push('styles')
-    <!-- ...existing code... -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 @endpush
 
 @push('scripts')
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.js_api_key') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script>
-        let map, marker;
+        let riderMap, riderMarker;
+        let deliveryPickerMap, deliveryPickerMarker;
+        let searchTimeout = null;
+
         function updateRiderMap(orderId) {
             fetch(`/api/orders/${orderId}/tracking`)
                 .then(res => res.json())
@@ -18,33 +21,260 @@
                         document.getElementById('rider-map-section').style.display = '';
                         const lat = parseFloat(data.location.lat);
                         const lng = parseFloat(data.location.lng);
-                        if (!map) {
-                            map = new google.maps.Map(document.getElementById('map'), {
-                                center: {lat, lng},
-                                zoom: 15
-                            });
-                            marker = new google.maps.Marker({
-                                position: {lat, lng},
-                                map: map,
-                                title: 'Rider Location',
-                                icon: 'https://maps.google.com/mapfiles/ms/icons/motorcycling.png'
-                            });
-                        } else {
-                            marker.setPosition({lat, lng});
-                            map.setCenter({lat, lng});
+
+                        if (Number.isNaN(lat) || Number.isNaN(lng)) {
+                            return;
                         }
+
+                        if (!riderMap) {
+                            riderMap = L.map('map').setView([lat, lng], 15);
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                attribution: '© OpenStreetMap contributors',
+                                maxZoom: 19,
+                            }).addTo(riderMap);
+
+                            const riderIcon = L.divIcon({
+                                className: '',
+                                html: '<div style="width:16px;height:16px;background:#0d6efd;border:2px solid #fff;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,0.35);"></div>',
+                                iconSize: [16, 16],
+                                iconAnchor: [8, 8],
+                            });
+
+                            riderMarker = L.marker([lat, lng], {
+                                icon: riderIcon,
+                            });
+                            riderMarker.addTo(riderMap).bindPopup('Rider location');
+                        } else {
+                            riderMarker.setLatLng([lat, lng]);
+                            riderMap.setView([lat, lng], riderMap.getZoom());
+                        }
+
                         document.getElementById('rider-status').innerHTML = `<b>Status:</b> ${data.status} <br><b>ETA:</b> ${data.eta || 'N/A'}`;
                     } else {
                         document.getElementById('rider-map-section').style.display = 'none';
                     }
                 });
         }
+
+        function shouldShowDeliveryPicker() {
+            const selected = document.querySelector('input[name="delivery_type"]:checked');
+            return selected && (selected.value === 'delivery' || selected.value === 'fasttrack');
+        }
+
+        function updateSelectedCoordinatesText(lat, lng) {
+            const info = document.getElementById('selected-coordinates');
+            if (!info) {
+                return;
+            }
+
+            if (lat === null || lng === null) {
+                info.textContent = 'No exact map point selected yet. Click on the map to pin your exact location.';
+                return;
+            }
+
+            info.textContent = `Pinned coordinates: ${lat.toFixed(7)}, ${lng.toFixed(7)}`;
+        }
+
+        function showAddressVerified(message, isOk = true) {
+            const badge = document.getElementById('delivery-validation');
+            if (!badge) {
+                return;
+            }
+
+            badge.style.display = '';
+            badge.className = isOk ? 'text-success mt-2 small d-block' : 'text-danger mt-2 small d-block';
+            badge.textContent = message;
+        }
+
+        function hideAddressSuggestions() {
+            const suggestionBox = document.getElementById('delivery_suggestions');
+            if (!suggestionBox) {
+                return;
+            }
+
+            suggestionBox.style.display = 'none';
+            suggestionBox.innerHTML = '';
+        }
+
+        function setAddressSuggestions(items) {
+            const suggestionBox = document.getElementById('delivery_suggestions');
+
+            if (!suggestionBox) {
+                return;
+            }
+
+            if (!items.length) {
+                suggestionBox.style.display = '';
+                suggestionBox.innerHTML = '<div class="p-2 text-muted small">No matching address found.</div>';
+                return;
+            }
+
+            suggestionBox.innerHTML = items.map((item) => {
+                const safeName = item.display_name.replace(/'/g, '&#39;');
+                return `<button type="button" class="list-group-item list-group-item-action" onclick="selectDeliveryAddress('${safeName}', ${item.lat}, ${item.lon})">${item.display_name}</button>`;
+            }).join('');
+            suggestionBox.style.display = '';
+        }
+
+        async function searchDeliveryAddress(input) {
+            const query = (input.value || '').trim();
+
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+
+            if (query.length < 3) {
+                hideAddressSuggestions();
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const results = await response.json();
+                    setAddressSuggestions(Array.isArray(results) ? results : []);
+                } catch (error) {
+                    hideAddressSuggestions();
+                }
+            }, 300);
+        }
+
+        function updateDeliveryMarker(lat, lng) {
+            if (!deliveryPickerMap) {
+                return;
+            }
+
+            if (!deliveryPickerMarker) {
+                deliveryPickerMarker = L.marker([lat, lng], {
+                    draggable: true,
+                }).addTo(deliveryPickerMap);
+
+                deliveryPickerMarker.on('dragend', function (event) {
+                    const pos = event.target.getLatLng();
+                    setDeliveryCoordinates(pos.lat, pos.lng);
+                    showAddressVerified('Address pin adjusted on map.');
+                });
+            } else {
+                deliveryPickerMarker.setLatLng([lat, lng]);
+            }
+
+            deliveryPickerMap.setView([lat, lng], Math.max(deliveryPickerMap.getZoom(), 15));
+        }
+
+        function selectDeliveryAddress(address, lat, lng) {
+            const addressInput = document.getElementById('delivery_address');
+
+            if (!addressInput) {
+                return;
+            }
+
+            addressInput.value = address.replace(/&#39;/g, "'");
+            hideAddressSuggestions();
+
+            const parsedLat = parseFloat(lat);
+            const parsedLng = parseFloat(lng);
+
+            if (!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng)) {
+                setDeliveryCoordinates(parsedLat, parsedLng);
+                updateDeliveryMarker(parsedLat, parsedLng);
+                showAddressVerified('Address verified with OpenStreetMap.');
+            }
+        }
+
+        function setDeliveryCoordinates(lat, lng) {
+            const latInput = document.getElementById('delivery_lat');
+            const lngInput = document.getElementById('delivery_lng');
+
+            if (!latInput || !lngInput) {
+                return;
+            }
+
+            latInput.value = lat.toFixed(7);
+            lngInput.value = lng.toFixed(7);
+            updateSelectedCoordinatesText(lat, lng);
+        }
+
+        function initDeliveryMapPicker() {
+            const mapEl = document.getElementById('delivery-map');
+            const latInput = document.getElementById('delivery_lat');
+            const lngInput = document.getElementById('delivery_lng');
+
+            if (!mapEl || !latInput || !lngInput || typeof L === 'undefined') {
+                return;
+            }
+
+            const initialLat = parseFloat(latInput.value || '14.5995');
+            const initialLng = parseFloat(lngInput.value || '120.9842');
+
+            if (!deliveryPickerMap) {
+                deliveryPickerMap = L.map(mapEl).setView([initialLat, initialLng], 15);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19,
+                }).addTo(deliveryPickerMap);
+
+                deliveryPickerMap.on('click', function (event) {
+                    const lat = event.latlng.lat;
+                    const lng = event.latlng.lng;
+
+                    setDeliveryCoordinates(lat, lng);
+                    updateDeliveryMarker(lat, lng);
+                    showAddressVerified('Map point selected.');
+                });
+            }
+
+            if (!Number.isNaN(initialLat) && !Number.isNaN(initialLng) && latInput.value !== '' && lngInput.value !== '') {
+                updateDeliveryMarker(initialLat, initialLng);
+                updateSelectedCoordinatesText(initialLat, initialLng);
+            } else {
+                updateSelectedCoordinatesText(null, null);
+            }
+
+            setTimeout(() => deliveryPickerMap.invalidateSize(), 100);
+        }
+
+        function toggleDeliveryPicker() {
+            const wrapper = document.getElementById('delivery-map-picker-section');
+
+            if (!wrapper) {
+                return;
+            }
+
+            if (shouldShowDeliveryPicker()) {
+                wrapper.style.display = '';
+                initDeliveryMapPicker();
+            } else {
+                wrapper.style.display = 'none';
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             var orderId = document.getElementById('order-id') ? document.getElementById('order-id').value : null;
             if (orderId) {
                 updateRiderMap(orderId);
                 setInterval(() => updateRiderMap(orderId), 5000); // Poll every 5 seconds
             }
+
+            const addressInput = document.getElementById('delivery_address');
+            if (addressInput) {
+                addressInput.addEventListener('input', function () {
+                    searchDeliveryAddress(this);
+                });
+
+                addressInput.addEventListener('blur', function () {
+                    setTimeout(() => hideAddressSuggestions(), 200);
+                });
+            }
+
+            document.querySelectorAll('input[name="delivery_type"]').forEach((radio) => {
+                radio.addEventListener('change', toggleDeliveryPicker);
+            });
+
+            toggleDeliveryPicker();
         });
     </script>
 @endpush
@@ -166,20 +396,28 @@
                                 <i class="fas fa-shipping-fast me-2 text-primary"></i>Delivery Option
                             </label>
                             <div class="row g-3">
-                                <div class="col-6">
-                                    <input type="radio" class="btn-check" name="delivery_type" id="pickup" value="pickup" checked>
+                                <div class="col-md-4 col-12">
+                                    <input type="radio" class="btn-check" name="delivery_type" id="pickup" value="pickup" {{ old('delivery_type', 'pickup') === 'pickup' ? 'checked' : '' }}>
                                     <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="pickup">
                                         <i class="fas fa-store fa-2x mb-2 d-block"></i>
                                         <span class="fw-bold">Pickup</span>
                                         <small class="d-block text-muted">At our store</small>
                                     </label>
                                 </div>
-                                <div class="col-6">
-                                    <input type="radio" class="btn-check" name="delivery_type" id="delivery" value="delivery">
+                                <div class="col-md-4 col-12">
+                                    <input type="radio" class="btn-check" name="delivery_type" id="delivery" value="delivery" {{ old('delivery_type') === 'delivery' ? 'checked' : '' }}>
                                     <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="delivery">
                                         <i class="fas fa-motorcycle fa-2x mb-2 d-block"></i>
                                         <span class="fw-bold">Delivery</span>
                                         <small class="d-block text-muted">To your door</small>
+                                    </label>
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <input type="radio" class="btn-check" name="delivery_type" id="fasttrack" value="fasttrack" {{ old('delivery_type') === 'fasttrack' ? 'checked' : '' }}>
+                                    <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="fasttrack">
+                                        <i class="fas fa-bolt fa-2x mb-2 d-block"></i>
+                                        <span class="fw-bold">FastTrack</span>
+                                        <small class="d-block text-muted">Partner courier</small>
                                     </label>
                                 </div>
                             </div>
@@ -190,14 +428,30 @@
                             <label for="delivery_address" class="form-label fw-bold">
                                 <i class="fas fa-map-marker-alt me-2 text-primary"></i>Delivery Address
                             </label>
-                            <textarea class="form-control rounded-3 @error('delivery_address') is-invalid @enderror" 
-                                      id="delivery_address" 
-                                      name="delivery_address" 
-                                      rows="3" 
-                                      placeholder="Enter your complete delivery address...">{{ old('delivery_address', auth()->user()->address ?? '') }}</textarea>
+                            <input class="form-control rounded-3 @error('delivery_address') is-invalid @enderror"
+                                   id="delivery_address"
+                                   name="delivery_address"
+                                   value="{{ old('delivery_address', auth()->user()->address ?? '') }}"
+                                   placeholder="Start typing your address..."
+                                   autocomplete="off">
+                            <div id="delivery_suggestions" class="list-group mt-2" style="display:none; max-height: 220px; overflow-y: auto;"></div>
+                            <small id="delivery-validation" style="display:none;"></small>
                             @error('delivery_address')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
+                        </div>
+
+                        <input type="hidden" name="delivery_lat" id="delivery_lat" value="{{ old('delivery_lat') }}">
+                        <input type="hidden" name="delivery_lng" id="delivery_lng" value="{{ old('delivery_lng') }}">
+
+                        <div class="mb-4" id="delivery-map-picker-section" style="display: none;">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-crosshairs me-2 text-primary"></i>Pin Exact Delivery Point
+                            </label>
+                            <div id="delivery-map" style="width: 100%; height: 220px; border-radius: 10px; border: 1px solid #dee2e6;"></div>
+                            <small id="selected-coordinates" class="text-muted d-block mt-2">
+                                No exact map point selected yet. Click on the map to pin your exact location.
+                            </small>
                         </div>
 
                         <!-- Contact Number -->

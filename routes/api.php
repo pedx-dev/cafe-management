@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Models\Order;
+use App\Http\Controllers\Api\CourierIntegrationController;
 use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\StripeWebhookController;
 
@@ -50,3 +51,11 @@ Route::get('/orders/{order_code}', function ($order_code) {
 Route::get('/orders/{order_id}/tracking', [OrderTrackingController::class, 'show']);
 
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->name('api.stripe.webhook');
+
+Route::post('/send-order', [CourierIntegrationController::class, 'sendOrder'])
+    ->middleware('throttle:integration-send-order')
+    ->name('api.integration.send-order');
+
+Route::post('/fasttrack/status-update', [CourierIntegrationController::class, 'statusUpdate'])
+    ->middleware('throttle:integration-callback')
+    ->name('api.integration.fasttrack.status-update');

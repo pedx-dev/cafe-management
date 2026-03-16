@@ -6,11 +6,12 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Cart;
 use App\Models\OrderTracking;
-use App\Services\GoogleMapsService;
+use App\Services\Courier\CourierDispatchService;
 use App\Services\StripeService;
 use App\Services\TwilioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
@@ -46,8 +47,10 @@ class OrderController extends Controller
     public function placeOrder(Request $request)
     {
         $validated = $request->validate([
-            'delivery_type' => 'required|in:pickup,delivery',
-            'delivery_address' => 'nullable|required_if:delivery_type,delivery|string|max:255',
+            'delivery_type' => 'required|in:pickup,delivery,fasttrack',
+            'delivery_address' => 'nullable|required_if:delivery_type,delivery,fasttrack|string|max:255',
+            'delivery_lat' => 'nullable|required_with:delivery_lng|numeric|between:-90,90',
+            'delivery_lng' => 'nullable|required_with:delivery_lat|numeric|between:-180,180',
             'payment_method' => 'required|in:cash,card',
             'notes' => 'nullable|string|max:1000',
         ]);
@@ -110,9 +113,12 @@ class OrderController extends Controller
             'lng' => null,
         ];
 
-        if ($order->delivery_type === 'delivery' && ! empty($order->delivery_address)) {
+        if (isset($validated['delivery_lat'], $validated['delivery_lng'])) {
+            $trackingPayload['lat'] = (float) $validated['delivery_lat'];
+            $trackingPayload['lng'] = (float) $validated['delivery_lng'];
+        } elseif (in_array($order->delivery_type, ['delivery', 'fasttrack'], true) && ! empty($order->delivery_address)) {
             try {
-                $geocode = app(GoogleMapsService::class)->geocode($order->delivery_address);
+                $geocode = $this->geocodeWithNominatim($order->delivery_address);
                 if ($geocode) {
                     $trackingPayload['lat'] = $geocode['lat'];
                     $trackingPayload['lng'] = $geocode['lng'];
@@ -127,6 +133,15 @@ class OrderController extends Controller
 
         OrderTracking::create($trackingPayload);
 
+        $integrationWarning = null;
+        if ($order->delivery_type === 'fasttrack') {
+            $dispatchResult = app(CourierDispatchService::class)->dispatchOrder($order);
+
+            if (! (bool) ($dispatchResult['success'] ?? false)) {
+                $integrationWarning = 'Order saved, but FastTrack dispatch is pending: ' . ($dispatchResult['message'] ?? 'Unknown integration error.');
+            }
+        }
+
         // Card payments are redirected to Stripe Checkout.
         if ($validated['payment_method'] === 'card') {
             try {
@@ -137,6 +152,10 @@ class OrderController extends Controller
                 );
 
                 $order->update(['stripe_session_id' => $session['id']]);
+
+                if ($integrationWarning) {
+                    session()->flash('warning', $integrationWarning);
+                }
 
                 return redirect()->away($session['url']);
             } catch (\Throwable $e) {
@@ -157,7 +176,46 @@ class OrderController extends Controller
             Log::warning('Failed to send order SMS', ['order_id' => $order->id, 'error' => $e->getMessage()]);
         }
 
-        return redirect()->route('orders.show', $order->id)->with('success', 'Order placed successfully!');
+        $redirect = redirect()->route('orders.show', $order->id)->with('success', 'Order placed successfully!');
+
+        if ($integrationWarning) {
+            $redirect->with('warning', $integrationWarning);
+        }
+
+        return $redirect;
+    }
+
+    /**
+     * @return array{lat: float, lng: float}|null
+     */
+    private function geocodeWithNominatim(string $address): ?array
+    {
+        $response = Http::timeout(8)
+            ->withHeaders([
+                'Accept' => 'application/json',
+                'User-Agent' => 'CafeManagement/1.0 (integration geocoder)',
+            ])
+            ->get('https://nominatim.openstreetmap.org/search', [
+                'q' => $address,
+                'format' => 'json',
+                'limit' => 1,
+            ]);
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $results = $response->json();
+        $topResult = is_array($results) ? ($results[0] ?? null) : null;
+
+        if (! is_array($topResult) || ! isset($topResult['lat'], $topResult['lon'])) {
+            return null;
+        }
+
+        return [
+            'lat' => (float) $topResult['lat'],
+            'lng' => (float) $topResult['lon'],
+        ];
     }
 
     public function paymentSuccess(Request $request, $id)

@@ -101,6 +101,11 @@
                                     <div class="order-number-badge me-2">
                                         <span class="fw-bold text-gradient fs-5">#{{ $order->id }}</span>
                                     </div>
+                                    @if($order->delivery_type === 'fasttrack' || $order->courier_provider === 'fasttrack')
+                                        <span class="badge bg-dark rounded-pill px-3 py-2">
+                                            <i class="fas fa-bolt me-1 text-warning"></i>FAST TRACK
+                                        </span>
+                                    @endif
                                 </div>
                             </td>
                             <td>

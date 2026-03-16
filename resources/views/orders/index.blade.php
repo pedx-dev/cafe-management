@@ -102,6 +102,7 @@
                     ];
                     $color = $statusColors[$order->status] ?? 'secondary';
                     $icon = $statusIcons[$order->status] ?? 'circle';
+                    $isFastTrackOrder = $order->delivery_type === 'fasttrack' || $order->courier_provider === 'fasttrack';
                 @endphp
                 <div class="col-12 mb-4">
                     <div class="card-cafe overflow-hidden order-card {{ $order->status == 'pending' || $order->status == 'preparing' ? 'border-start border-4 border-' . $color : '' }}">
@@ -118,6 +119,13 @@
                                                 <i class="fas fa-calendar-alt me-1"></i>
                                                 {{ $order->created_at->format('M d, Y') }}
                                             </small>
+                                            @if($isFastTrackOrder)
+                                                <div class="mt-2">
+                                                    <span class="badge bg-dark rounded-pill px-3 py-2">
+                                                        <i class="fas fa-bolt me-1 text-warning"></i>FAST TRACK
+                                                    </span>
+                                                </div>
+                                            @endif
                                         </div>
                                     </div>
                                 </div>

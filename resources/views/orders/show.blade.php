@@ -44,10 +44,18 @@
                     ];
                     $color = $statusColors[$order->status] ?? 'secondary';
                     $icon = $statusIcons[$order->status] ?? 'circle';
+                    $isFastTrackOrder = $order->delivery_type === 'fasttrack' || $order->courier_provider === 'fasttrack';
                 @endphp
-                <span class="badge bg-{{ $color }} fs-5 px-4 py-2 rounded-pill">
-                    <i class="fas fa-{{ $icon }} me-2"></i>{{ ucfirst($order->status) }}
-                </span>
+                <div class="d-flex flex-column align-items-sm-end gap-2">
+                    <span class="badge bg-{{ $color }} fs-5 px-4 py-2 rounded-pill">
+                        <i class="fas fa-{{ $icon }} me-2"></i>{{ ucfirst($order->status) }}
+                    </span>
+                    @if($isFastTrackOrder)
+                        <span class="badge bg-dark px-3 py-2 rounded-pill">
+                            <i class="fas fa-bolt me-1 text-warning"></i>FAST TRACK DELIVERY
+                        </span>
+                    @endif
+                </div>
             </div>
         </div>
     </div>
@@ -189,6 +197,12 @@
                         <small class="text-muted d-block mb-1">Delivery Address</small>
                         <p class="mb-0 fw-semibold">{{ $order->delivery_address ?? 'Pickup at Store' }}</p>
                     </div>
+                    @if($isFastTrackOrder)
+                    <div class="bg-dark bg-opacity-100 text-white rounded-3 p-3 mb-3">
+                        <small class="d-block mb-1 text-uppercase opacity-75">Courier</small>
+                        <p class="mb-0 fw-semibold"><i class="fas fa-bolt me-2 text-warning"></i>Delivered via FastTrack</p>
+                    </div>
+                    @endif
                     @if($order->notes)
                     <div class="bg-light rounded-3 p-3">
                         <small class="text-muted d-block mb-1">Special Instructions</small>

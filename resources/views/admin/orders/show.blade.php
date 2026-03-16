@@ -40,10 +40,18 @@
                     ];
                     $color = $statusColors[$order->status] ?? 'secondary';
                     $icon = $statusIcons[$order->status] ?? 'circle';
+                    $isFastTrackOrder = $order->delivery_type === 'fasttrack' || $order->courier_provider === 'fasttrack';
                 @endphp
-                <span class="badge bg-{{ $color }} fs-5 px-4 py-3 rounded-pill shadow">
-                    <i class="fas fa-{{ $icon }} me-2"></i>{{ ucfirst($order->status) }}
-                </span>
+                <div class="d-flex flex-column align-items-sm-end gap-2">
+                    <span class="badge bg-{{ $color }} fs-5 px-4 py-3 rounded-pill shadow">
+                        <i class="fas fa-{{ $icon }} me-2"></i>{{ ucfirst($order->status) }}
+                    </span>
+                    @if($isFastTrackOrder)
+                        <span class="badge bg-dark px-3 py-2 rounded-pill shadow-sm">
+                            <i class="fas fa-bolt me-1 text-warning"></i>FAST TRACK DELIVERY
+                        </span>
+                    @endif
+                </div>
             </div>
         </div>
     </div>
@@ -215,6 +223,14 @@
                                     <i class="fas fa-map-marker-alt me-2 text-primary"></i>Delivery Address
                                 </label>
                                 <p class="mb-0 fw-semibold">{{ $order->delivery_address }}</p>
+                            </div>
+                        @endif
+                        @if($isFastTrackOrder)
+                            <div class="detail-item mb-3 p-3 bg-dark text-white rounded-3">
+                                <label class="small mb-1 d-block text-uppercase opacity-75">
+                                    <i class="fas fa-bolt me-2 text-warning"></i>Courier Source
+                                </label>
+                                <p class="mb-0 fw-semibold">FastTrack Delivery</p>
                             </div>
                         @endif
                     </div>
