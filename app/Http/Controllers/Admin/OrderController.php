@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Services\Courier\GoMetrixSyncService;
 use App\Services\TwilioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -61,6 +62,30 @@ class OrderController extends Controller
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        if ($order->courier_provider === 'gometrix') {
+            $syncResult = app(GoMetrixSyncService::class)->syncFromCafeStatus($order, $validated['status']);
+
+            if (! (bool) ($syncResult['success'] ?? false)) {
+                Log::warning('Cafe to GoMetrix status sync failed', [
+                    'order_id' => $order->id,
+                    'status' => $validated['status'],
+                    'message' => $syncResult['message'] ?? 'Unknown sync error',
+                ]);
+
+                return redirect()->back()->with('warning', 'Order status updated in Cafe, but GoMetrix sync failed: ' . ($syncResult['message'] ?? 'Unknown sync error.'));
+            }
+
+            $remoteStatus = $syncResult['data']['status'] ?? null;
+            $remoteReference = $syncResult['data']['reference'] ?? null;
+
+            if ($remoteStatus || $remoteReference) {
+                $order->update([
+                    'courier_status' => $remoteStatus ?? $order->courier_status,
+                    'courier_reference' => $remoteReference ?? $order->courier_reference,
+                ]);
+            }
         }
 
         return redirect()->back()->with('success', 'Order status updated successfully.');

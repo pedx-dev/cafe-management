@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class OrderController extends Controller
 {
@@ -47,13 +48,19 @@ class OrderController extends Controller
     public function placeOrder(Request $request)
     {
         $validated = $request->validate([
-            'delivery_type' => 'required|in:pickup,delivery,fasttrack',
-            'delivery_address' => 'nullable|required_if:delivery_type,delivery,fasttrack|string|max:255',
+            'delivery_type' => 'required|in:pickup,delivery,fasttrack,gometrix',
+            'delivery_address' => 'nullable|required_if:delivery_type,delivery,fasttrack,gometrix|string|max:255',
             'delivery_lat' => 'nullable|required_with:delivery_lng|numeric|between:-90,90',
             'delivery_lng' => 'nullable|required_with:delivery_lat|numeric|between:-180,180',
-            'payment_method' => 'required|in:cash,card',
+            'payment_method' => 'required|in:cash,card,xendit',
             'notes' => 'nullable|string|max:1000',
         ]);
+
+        if ($validated['payment_method'] === 'xendit' && $validated['delivery_type'] !== 'gometrix') {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Pay on Xendit is available only when GoMetrix delivery is selected.',
+            ]);
+        }
 
         $cartItems = Cart::where('user_id', auth()->id())->with('menuItem')->get();
 
@@ -116,7 +123,7 @@ class OrderController extends Controller
         if (isset($validated['delivery_lat'], $validated['delivery_lng'])) {
             $trackingPayload['lat'] = (float) $validated['delivery_lat'];
             $trackingPayload['lng'] = (float) $validated['delivery_lng'];
-        } elseif (in_array($order->delivery_type, ['delivery', 'fasttrack'], true) && ! empty($order->delivery_address)) {
+        } elseif (in_array($order->delivery_type, ['delivery', 'fasttrack', 'gometrix'], true) && ! empty($order->delivery_address)) {
             try {
                 $geocode = $this->geocodeWithNominatim($order->delivery_address);
                 if ($geocode) {
@@ -134,11 +141,12 @@ class OrderController extends Controller
         OrderTracking::create($trackingPayload);
 
         $integrationWarning = null;
-        if ($order->delivery_type === 'fasttrack') {
+        if (in_array($order->delivery_type, ['fasttrack', 'gometrix'], true)) {
             $dispatchResult = app(CourierDispatchService::class)->dispatchOrder($order);
 
             if (! (bool) ($dispatchResult['success'] ?? false)) {
-                $integrationWarning = 'Order saved, but FastTrack dispatch is pending: ' . ($dispatchResult['message'] ?? 'Unknown integration error.');
+                $providerLabel = $order->delivery_type === 'gometrix' ? 'GoMetrix' : 'FastTrack';
+                $integrationWarning = 'Order saved, but ' . $providerLabel . ' dispatch is pending: ' . ($dispatchResult['message'] ?? 'Unknown integration error.');
             }
         }
 
@@ -167,6 +175,21 @@ class OrderController extends Controller
                 return redirect()->route('orders.show', $order->id)
                     ->with('error', 'Order created, but card payment setup failed. Please contact support or choose cash next time.');
             }
+        }
+
+        if ($validated['payment_method'] === 'xendit') {
+            $invoiceUrl = (string) ($dispatchResult['data']['xendit_invoice_url'] ?? '');
+
+            if ($invoiceUrl !== '') {
+                if ($integrationWarning) {
+                    session()->flash('warning', $integrationWarning);
+                }
+
+                return redirect()->away($invoiceUrl);
+            }
+
+            return redirect()->route('orders.show', $order->id)
+                ->with('error', 'Order was sent to GoMetrix, but the Xendit payment link was not created. Please try again later.');
         }
 
         // Send best-effort SMS for immediate cash orders.

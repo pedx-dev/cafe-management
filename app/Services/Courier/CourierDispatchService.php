@@ -17,9 +17,11 @@ class CourierDispatchService
     {
         $order->loadMissing(['user', 'items', 'orderTracking']);
 
-        $providerKey = $order->delivery_type === 'fasttrack'
-            ? 'fasttrack'
-            : (string) config('services.courier_integration.default_provider', 'fasttrack');
+        $providerKey = match ($order->delivery_type) {
+            'fasttrack' => 'fasttrack',
+            'gometrix' => 'gometrix',
+            default => (string) config('services.courier_integration.default_provider', 'fasttrack'),
+        };
 
         $payload = $this->buildCanonicalPayload($order);
         $result = $this->providerManager->sendOrder($providerKey, $payload);
@@ -50,6 +52,7 @@ class CourierDispatchService
             'customer' => [
                 'name' => $order->user?->name,
                 'phone' => $order->user?->phone,
+                'email' => $order->user?->email,
             ],
             'delivery' => [
                 'address' => $order->delivery_address,
@@ -62,6 +65,9 @@ class CourierDispatchService
                 'status' => $order->payment_status,
                 'amount' => (float) $order->total_amount,
                 'currency' => strtoupper((string) config('services.stripe.currency', 'php')),
+                // Demo redirect URLs: GoMetrix can send the Xendit payer back to Cafe.
+                'success_redirect_url' => route('orders.show', ['id' => $order->id]),
+                'failure_redirect_url' => route('orders.show', ['id' => $order->id]),
             ],
             'items' => $order->items->map(fn ($item) => [
                 'menu_item_id' => $item->menu_item_id,

@@ -59,3 +59,7 @@ Route::post('/send-order', [CourierIntegrationController::class, 'sendOrder'])
 Route::post('/fasttrack/status-update', [CourierIntegrationController::class, 'statusUpdate'])
     ->middleware('throttle:integration-callback')
     ->name('api.integration.fasttrack.status-update');
+
+Route::post('/gometrix/status-update', [CourierIntegrationController::class, 'goMetrixStatusUpdate'])
+    ->middleware('throttle:integration-callback')
+    ->name('api.integration.gometrix.status-update');

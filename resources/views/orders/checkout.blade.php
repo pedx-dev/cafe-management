@@ -58,7 +58,32 @@
 
         function shouldShowDeliveryPicker() {
             const selected = document.querySelector('input[name="delivery_type"]:checked');
-            return selected && (selected.value === 'delivery' || selected.value === 'fasttrack');
+            return selected && (selected.value === 'delivery' || selected.value === 'fasttrack' || selected.value === 'gometrix');
+        }
+
+        function isGoMetrixSelected() {
+            const selected = document.querySelector('input[name="delivery_type"]:checked');
+            return selected && selected.value === 'gometrix';
+        }
+
+        function toggleGoMetrixPaymentOption() {
+            const xenditOption = document.getElementById('payment-xendit-wrapper');
+            const xenditRadio = document.getElementById('payment-xendit');
+            const cashRadio = document.getElementById('payment-cash');
+
+            if (!xenditOption || !xenditRadio || !cashRadio) {
+                return;
+            }
+
+            if (isGoMetrixSelected()) {
+                xenditOption.style.display = '';
+                return;
+            }
+
+            xenditOption.style.display = 'none';
+            if (xenditRadio.checked) {
+                cashRadio.checked = true;
+            }
         }
 
         function updateSelectedCoordinatesText(lat, lng) {
@@ -271,10 +296,14 @@
             }
 
             document.querySelectorAll('input[name="delivery_type"]').forEach((radio) => {
-                radio.addEventListener('change', toggleDeliveryPicker);
+                radio.addEventListener('change', function () {
+                    toggleDeliveryPicker();
+                    toggleGoMetrixPaymentOption();
+                });
             });
 
             toggleDeliveryPicker();
+            toggleGoMetrixPaymentOption();
         });
     </script>
 @endpush
@@ -396,7 +425,7 @@
                                 <i class="fas fa-shipping-fast me-2 text-primary"></i>Delivery Option
                             </label>
                             <div class="row g-3">
-                                <div class="col-md-4 col-12">
+                                <div class="col-md-3 col-6">
                                     <input type="radio" class="btn-check" name="delivery_type" id="pickup" value="pickup" {{ old('delivery_type', 'pickup') === 'pickup' ? 'checked' : '' }}>
                                     <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="pickup">
                                         <i class="fas fa-store fa-2x mb-2 d-block"></i>
@@ -404,7 +433,7 @@
                                         <small class="d-block text-muted">At our store</small>
                                     </label>
                                 </div>
-                                <div class="col-md-4 col-12">
+                                <div class="col-md-3 col-6">
                                     <input type="radio" class="btn-check" name="delivery_type" id="delivery" value="delivery" {{ old('delivery_type') === 'delivery' ? 'checked' : '' }}>
                                     <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="delivery">
                                         <i class="fas fa-motorcycle fa-2x mb-2 d-block"></i>
@@ -412,11 +441,19 @@
                                         <small class="d-block text-muted">To your door</small>
                                     </label>
                                 </div>
-                                <div class="col-md-4 col-12">
+                                <div class="col-md-3 col-6">
                                     <input type="radio" class="btn-check" name="delivery_type" id="fasttrack" value="fasttrack" {{ old('delivery_type') === 'fasttrack' ? 'checked' : '' }}>
                                     <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="fasttrack">
                                         <i class="fas fa-bolt fa-2x mb-2 d-block"></i>
                                         <span class="fw-bold">FastTrack</span>
+                                        <small class="d-block text-muted">Partner courier</small>
+                                    </label>
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <input type="radio" class="btn-check" name="delivery_type" id="gometrix" value="gometrix" {{ old('delivery_type') === 'gometrix' ? 'checked' : '' }}>
+                                    <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="gometrix">
+                                        <i class="fas fa-route fa-2x mb-2 d-block"></i>
+                                        <span class="fw-bold">GoMetrix</span>
                                         <small class="d-block text-muted">Partner courier</small>
                                     </label>
                                 </div>
@@ -500,6 +537,14 @@
                                         <i class="fas fa-credit-card fa-2x mb-2 d-block"></i>
                                         <span class="fw-bold">Card</span>
                                         <small class="d-block text-muted">Stripe checkout</small>
+                                    </label>
+                                </div>
+                                <div class="col-12" id="payment-xendit-wrapper" style="display:none;">
+                                    <input type="radio" class="btn-check" name="payment_method" id="payment-xendit" value="xendit" {{ old('payment_method') === 'xendit' ? 'checked' : '' }}>
+                                    <label class="btn btn-outline-primary w-100 py-3 rounded-3" for="payment-xendit">
+                                        <i class="fas fa-qrcode fa-2x mb-2 d-block"></i>
+                                        <span class="fw-bold">Pay on Xendit</span>
+                                        <small class="d-block text-muted">Shown only for GoMetrix deliveries</small>
                                     </label>
                                 </div>
                             </div>

@@ -45,6 +45,7 @@
                     $color = $statusColors[$order->status] ?? 'secondary';
                     $icon = $statusIcons[$order->status] ?? 'circle';
                     $isFastTrackOrder = $order->delivery_type === 'fasttrack' || $order->courier_provider === 'fasttrack';
+                    $isGoMetrixOrder = $order->delivery_type === 'gometrix' || $order->courier_provider === 'gometrix';
                 @endphp
                 <div class="d-flex flex-column align-items-sm-end gap-2">
                     <span class="badge bg-{{ $color }} fs-5 px-4 py-2 rounded-pill">
@@ -53,6 +54,11 @@
                     @if($isFastTrackOrder)
                         <span class="badge bg-dark px-3 py-2 rounded-pill">
                             <i class="fas fa-bolt me-1 text-warning"></i>FAST TRACK DELIVERY
+                        </span>
+                    @endif
+                    @if($isGoMetrixOrder)
+                        <span class="badge bg-primary px-3 py-2 rounded-pill">
+                            <i class="fas fa-route me-1"></i>GOMETRIX DELIVERY
                         </span>
                     @endif
                 </div>
@@ -201,6 +207,26 @@
                     <div class="bg-dark bg-opacity-100 text-white rounded-3 p-3 mb-3">
                         <small class="d-block mb-1 text-uppercase opacity-75">Courier</small>
                         <p class="mb-0 fw-semibold"><i class="fas fa-bolt me-2 text-warning"></i>Delivered via FastTrack</p>
+                    </div>
+                    @endif
+                    @if($order->courier_provider)
+                    <div class="bg-light rounded-3 p-3 mb-3 border border-primary-subtle">
+                        <small class="text-muted d-block mb-2 text-uppercase">Courier Integration</small>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Provider</span>
+                            <span class="badge bg-dark rounded-pill">{{ strtoupper($order->courier_provider) }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Raw courier status</span>
+                            <span class="badge bg-info text-dark rounded-pill">{{ $order->courier_status ?? 'N/A' }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Courier reference</span>
+                            <span class="fw-semibold small">{{ $order->courier_reference ?? 'N/A' }}</span>
+                        </div>
+                        <small class="d-block mt-2 text-muted">
+                            Demo note: these raw values come directly from the external courier integration so you can show that GoMetrix is controlling the delivery workflow.
+                        </small>
                     </div>
                     @endif
                     @if($order->notes)

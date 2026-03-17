@@ -88,6 +88,36 @@ return [
             'status_callback_path' => env('FASTTRACK_STATUS_CALLBACK_PATH', '/api/fasttrack/status-update'),
             'api_key' => env('FASTTRACK_API_KEY'),
         ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | GoMetrix integration settings (Finals demo API bridge)
+        |--------------------------------------------------------------------------
+        | LOCALHOST SETUP:
+        | - Keep GO_METRIX_BASE_URL aligned with GoMetrix `php artisan serve`.
+        |   Default expected: http://127.0.0.1:8001
+        |
+        | SAME-NETWORK SETUP (2 machines):
+        | - Replace 127.0.0.1 with the machine LAN IP running GoMetrix.
+        |   Example: http://192.168.1.20:8001
+        |
+        | ENDPOINT PATHS:
+        | - outbound_order_path = Cafe -> GoMetrix order import endpoint.
+        | - status_callback_path = GoMetrix -> Cafe status callback endpoint.
+        | - action_path = Cafe -> GoMetrix two-way sync action endpoint.
+        |
+        | DEMO NOTE:
+        | - This integration is intentionally simple (API key + direct HTTP) for
+        |   classroom demonstration. Production deployments should add stronger
+        |   auth, queues, and idempotency controls.
+        */
+        'gometrix' => [
+            'base_url' => env('GO_METRIX_BASE_URL', 'http://127.0.0.1:8001'),
+            'outbound_order_path' => env('GO_METRIX_OUTBOUND_ORDER_PATH', '/api/integrations/cafe/orders'),
+            'status_callback_path' => env('GO_METRIX_STATUS_CALLBACK_PATH', '/api/gometrix/status-update'),
+            'action_path' => env('GO_METRIX_ACTION_PATH', '/api/integrations/cafe/orders/action'),
+            'api_key' => env('GO_METRIX_API_KEY'),
+        ],
     ],
 
     // ...existing code...

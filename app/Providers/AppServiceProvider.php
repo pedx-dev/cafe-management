@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Courier\CourierProviderManager;
 use App\Services\Courier\FastTrackCourierProvider;
+use App\Services\Courier\GoMetrixCourierProvider;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CourierProviderManager::class, function () {
             $manager = new CourierProviderManager();
             $manager->register(new FastTrackCourierProvider());
+            $manager->register(new GoMetrixCourierProvider());
 
             return $manager;
         });

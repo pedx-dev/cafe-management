@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\FastTrackStatusUpdateRequest;
+use App\Http\Requests\Api\GoMetrixStatusUpdateRequest;
 use App\Http\Requests\Api\SendOrderRequest;
 use App\Http\Responses\ApiResponse;
 use App\Models\Order;
@@ -17,11 +18,6 @@ class CourierIntegrationController extends Controller
 
     public function sendOrder(SendOrderRequest $request, CourierDispatchService $dispatchService): JsonResponse
     {
-        $authFailure = $this->authorizeIntegrationRequest($request);
-        if ($authFailure) {
-            return $authFailure;
-        }
-
         $validated = $request->validated();
 
         $order = Order::query()
@@ -29,11 +25,17 @@ class CourierIntegrationController extends Controller
             ->when(! empty($validated['order_code']), fn ($query) => $query->orWhere('order_code', $validated['order_code']))
             ->firstOrFail();
 
-        if ($order->delivery_type !== 'fasttrack') {
-            return $this->respondError('Only fasttrack delivery orders can be sent using this endpoint.', [
+        if (! in_array($order->delivery_type, ['fasttrack', 'gometrix'], true)) {
+            return $this->respondError('Only fasttrack or gometrix delivery orders can be sent using this endpoint.', [
                 'order_id' => $order->id,
                 'delivery_type' => $order->delivery_type,
             ], [], 422);
+        }
+
+        $expectedProvider = $order->delivery_type === 'gometrix' ? 'gometrix' : 'fasttrack';
+        $authFailure = $this->authorizeIntegrationRequest($request, $expectedProvider);
+        if ($authFailure) {
+            return $authFailure;
         }
 
         $result = $dispatchService->dispatchOrder($order);
@@ -45,7 +47,7 @@ class CourierIntegrationController extends Controller
 
     public function statusUpdate(FastTrackStatusUpdateRequest $request): JsonResponse
     {
-        $authFailure = $this->authorizeIntegrationRequest($request);
+        $authFailure = $this->authorizeIntegrationRequest($request, 'fasttrack');
         if ($authFailure) {
             return $authFailure;
         }
@@ -71,10 +73,38 @@ class CourierIntegrationController extends Controller
         ]);
     }
 
-    private function authorizeIntegrationRequest(Request $request): ?JsonResponse
+    public function goMetrixStatusUpdate(GoMetrixStatusUpdateRequest $request): JsonResponse
+    {
+        $authFailure = $this->authorizeIntegrationRequest($request, 'gometrix');
+        if ($authFailure) {
+            return $authFailure;
+        }
+
+        $validated = $request->validated();
+        $order = Order::findOrFail($validated['source_order_id']);
+
+        $mappedStatus = $this->mapGoMetrixStatusToOrderStatus($validated['status']);
+
+        $order->update([
+            'status' => $mappedStatus ?? $order->status,
+            'courier_provider' => 'gometrix',
+            'courier_reference' => (string) ($validated['reference'] ?? $validated['delivery_order_id'] ?? $order->courier_reference),
+            'courier_status' => $validated['status'],
+            'payment_status' => $validated['payment_status'] ?? $order->payment_status,
+        ]);
+
+        return $this->respondSuccess('GoMetrix status synced to cafe order', [
+            'order_id' => $order->id,
+            'status' => $order->status,
+            'courier_status' => $order->courier_status,
+            'courier_reference' => $order->courier_reference,
+        ]);
+    }
+
+    private function authorizeIntegrationRequest(Request $request, string $providerKey): ?JsonResponse
     {
         $headerName = (string) config('services.courier_integration.api_key_header', 'X-Integration-Key');
-        $configuredApiKey = (string) config('services.courier_integration.fasttrack.api_key', '');
+        $configuredApiKey = (string) config("services.courier_integration.{$providerKey}.api_key", '');
         $incomingApiKey = (string) $request->header($headerName, '');
 
         if ($configuredApiKey === '' || ! hash_equals($configuredApiKey, $incomingApiKey)) {
@@ -82,6 +112,19 @@ class CourierIntegrationController extends Controller
         }
 
         return null;
+    }
+
+    private function mapGoMetrixStatusToOrderStatus(string $goMetrixStatus): ?string
+    {
+        return match ($goMetrixStatus) {
+            'pending' => 'pending',
+            'accepted' => 'confirmed',
+            'picked_up' => 'preparing',
+            'in_transit' => 'ready',
+            'delivered' => 'delivered',
+            'cancelled' => 'cancelled',
+            default => null,
+        };
     }
 
     private function mapFastTrackStatusToOrderStatus(string $fastTrackStatus): ?string
