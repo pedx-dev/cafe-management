@@ -48,6 +48,7 @@ class CourierDispatchService
             'source_system' => 'cafe-management',
             'source_order_id' => $order->id,
             'order_number' => $order->order_number,
+            'order_code' => $order->order_code,
             'delivery_type' => $order->delivery_type,
             'customer' => [
                 'name' => $order->user?->name,
